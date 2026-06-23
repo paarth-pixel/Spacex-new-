@@ -60,7 +60,7 @@ footer{text-align:center;padding:2rem;font-size:12px;color:var(--muted);border-t
 
 <div class="main">
   <h1>SPCX <span>Option Pricer</span></h1>
-  <p class="sub">European calls and puts · Strikes $100–$200 · Live price via Yahoo Finance</p>
+  <p class="sub">European calls and puts · Strikes $100–$200 · Live price via Alpaca Markets</p>
 
   <div id="sourceBadge" class="source-badge source-fallback">
     <span class="dot dot-amber"></span>
@@ -101,7 +101,7 @@ footer{text-align:center;padding:2rem;font-size:12px;color:var(--muted);border-t
   </div>
 </div>
 
-<footer>Black-Scholes · Yahoo Finance price feed · Educational purposes only · Not financial advice</footer>
+<footer>Black-Scholes · Alpaca Markets price feed · Educational purposes only · Not financial advice</footer>
 
 <script>
 const FALLBACK = 166;
@@ -132,7 +132,7 @@ function setSource(live, price, source){
   const text=document.getElementById('sourceText');
   badge.className='source-badge '+(live?'source-live':'source-fallback');
   badge.querySelector('.dot').className='dot '+(live?'dot-green':'dot-amber');
-  text.textContent=live?`Live · $${price.toFixed(2)} via ${source}`:`Fallback price $${price.toFixed(2)} · Yahoo Finance blocked (CORS)`;
+  text.textContent=live?`Live · $${price.toFixed(2)} via ${source}`:`Using fallback $${price.toFixed(2)} · All APIs blocked or key exhausted`;
 }
 
 function render(){
@@ -163,6 +163,25 @@ function render(){
   }).join('');
 }
 
+const ALPACA_KEY = 'PKXYNNIG65V7UZTTY63WKWQ6LH';
+const ALPACA_SECRET = '47UKEL8arwLsgjRd33RoCfeMrS3GSGksjvE931GAW7eV';
+
+async function fetchAlpaca(){
+  try {
+    const res = await fetch('https://data.alpaca.markets/v2/stocks/SPCX/trades/latest', {
+      headers: {
+        'APCA-API-KEY-ID': ALPACA_KEY,
+        'APCA-API-SECRET-KEY': ALPACA_SECRET
+      }
+    });
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const json = await res.json();
+    const price = json?.trade?.p;
+    if(!price||price<=0) throw new Error('no price');
+    return price;
+  } catch(e){ return null; }
+}
+
 async function fetchYahoo(){
   try {
     const res=await fetch('https://query1.finance.yahoo.com/v8/finance/chart/SPCX?interval=1d&range=1d');
@@ -177,24 +196,31 @@ async function fetchYahoo(){
 async function fetchFMP(){
   try {
     const res=await fetch(`https://financialmodelingprep.com/stable/quote?symbol=SPCX&apikey=${FMP_KEY}`);
-    if(!res.ok) throw new Error('bad status');
+    if(!res.ok) throw new Error('HTTP '+res.status);
     const json=await res.json();
     const price=json?.[0]?.price;
     if(!price||price<=0) throw new Error('no price');
     return price;
-  } catch(e){ return null; }
+  } catch(e){
+    try {
+      const res=await fetch(`https://financialmodelingprep.com/api/v3/quote-short/SPCX?apikey=${FMP_KEY}`);
+      if(!res.ok) throw new Error('HTTP '+res.status);
+      const json=await res.json();
+      const price=json?.[0]?.price;
+      if(!price||price<=0) throw new Error('no price');
+      return price;
+    } catch(e2){ return null; }
+  }
 }
 
 async function init(){
   render();
-  let price=await fetchYahoo();
-  if(price){
-    S=price; setSource(true,price,'Yahoo Finance'); render(); return;
-  }
-  price=await fetchFMP();
-  if(price){
-    S=price; setSource(true,price,'Financial Modeling Prep'); render(); return;
-  }
+  let price = await fetchAlpaca();
+  if(price){ S=price; setSource(true,price,'Alpaca'); render(); return; }
+  price = await fetchYahoo();
+  if(price){ S=price; setSource(true,price,'Yahoo Finance'); render(); return; }
+  price = await fetchFMP();
+  if(price){ S=price; setSource(true,price,'Financial Modeling Prep'); render(); return; }
   S=FALLBACK; setSource(false,FALLBACK,''); render();
 }
 
